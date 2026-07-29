@@ -85,20 +85,26 @@ const checkQrStatus = (key) => {
             qrStatusCode.value = 803;
             // 去除 HTTPOnly
             res.code = 200;
-            res.cookie = res.cookie.replaceAll(" HTTPOnly", "");
+            if (res.cookie) {
+              res.cookie = res.cookie.replaceAll(" HTTPOnly", "");
+            }
             console.log(res);
             // 是否含有 MUSIC_U
             if (res.cookie && res.cookie.includes("MUSIC_U")) {
               // 储存登录信息
               emit("setLoginData", res);
             } else {
-              $message.error("登录出错，请重试");
+              $message.error("登录返回数据异常，请稍后重试");
               getQrData();
             }
             break;
           default:
             break;
         }
+      }).catch((error) => {
+        console.error("检查二维码状态出错：", error);
+        clearInterval(qrCheckInterval.value);
+        $message.error("网络错误，请重试");
       });
     }, 1000);
   } catch (error) {

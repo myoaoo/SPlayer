@@ -28,6 +28,9 @@ let spectrumsData = {
 // 默认标题
 let defaultTitle = document.title;
 
+// 远程音乐解析缓存
+const remoteMusicParseCache = new Map();
+
 /**
  * 初始化播放器
  */
@@ -45,16 +48,43 @@ export const initPlayer = async (playNow = false) => {
     const playSongData = music.getPlaySongData;
     // 是否为本地歌曲
     const isLocalSong = playSongData?.path ? true : false;
-    console.log("当前为本地歌曲");
-    // 获取封面
-    if (isLocalSong) {
-      music.playSongData.localCover = await getLocalCoverData(playSongData?.path);
+    // 是否为远程音乐文件
+    const isRemoteSong =
+      isLocalSong &&
+      (playSongData.path.startsWith("http://") || playSongData.path.startsWith("https://"));
+    // 是否为 Electron 环境
+    const isElectron = checkPlatform.electron();
+
+    // 远程音乐预解析（仅在 Electron 环境下，只调用一次，缓存结果）
+    let remoteMusicData = null;
+    if (isRemoteSong && isElectron) {
+      remoteMusicData = remoteMusicParseCache.get(playSongData.path);
+      if (!remoteMusicData) {
+        remoteMusicData = await electron.ipcRenderer.invoke(
+          "parseRemoteMusic",
+          playSongData.path,
+        );
+        remoteMusicParseCache.set(playSongData.path, remoteMusicData);
+        // 5分钟后清除缓存
+        setTimeout(() => {
+          remoteMusicParseCache.delete(playSongData.path);
+        }, 5 * 60 * 1000);
+      }
     }
-    const cover = isLocalSong ? music.playSongData?.localCover : playSongData?.coverSize;
+
+    // 获取封面（浏览器环境下远程歌曲使用歌单自带封面）
+    const coverPromise =
+      isLocalSong && isElectron
+        ? getLocalCoverData(playSongData?.path, remoteMusicData)
+        : Promise.resolve(null);
     // 歌词归位
     status.playSongLyricIndex = -1;
     // 若为 fm 模式，则清除当前歌曲信息
     if (playMode === "fm") music.playSongData = {};
+
+    let cover = isLocalSong ? music.playSongData?.localCover : playSongData?.coverSize;
+    let songUrl = null;
+
     // 在线歌曲
     if (!isLocalSong) {
       // 获取歌曲 ID
@@ -65,59 +95,58 @@ export const initPlayer = async (playNow = false) => {
       // 开启加载状态
       status.playLoading = true;
       // 获取播放地址
-      const url = await getNormalSongUrl(songId, status, playNow);
-      // 正常播放地址
-      if (url) {
-        status.playUseOtherSource = false;
-        createPlayer(url);
-      }
-      // 无法正常获取播放地址
-      else if (checkPlatform.electron() && playMode !== "dj" && settings.useUnmServer) {
-        const url = await getFromUnblockMusic(playSongData, status, playNow);
-        if (url) {
-          status.playUseOtherSource = true;
-          createPlayer(url);
-        } else {
-          isPlayEnd = true;
-          status.playUseOtherSource = false;
-          // 是否为最后一首
-          if (playIndex === playList.length - 1) {
-            status.playState = false;
-            $message.warning("当前列表歌曲无法播放，请更换歌曲");
-          } else {
-            $message.error("该歌曲暂无音源，跳至下一首");
-            changePlayIndex("next", true);
-          }
-        }
-      }
-      // 下一曲
-      else {
-        if (playIndex !== playList.length - 1) {
-          // changePlayIndex();
-        } else {
-          status.playLoading = false;
-          status.playState = false;
-          $message.warning("列表中暂无可播放歌曲", { closable: true, duration: 5000 });
-        }
+      songUrl = await getNormalSongUrl(songId, status, playNow);
+      // 无法正常获取播放地址，尝试解灰
+      if (!songUrl && isElectron && playMode !== "dj" && settings.useUnmServer) {
+        songUrl = await getFromUnblockMusic(playSongData, status, playNow);
+        if (songUrl) status.playUseOtherSource = true;
       }
     }
     // 本地歌曲
     else if (isLocalSong && playList?.length) {
-      const url = playList[playIndex]?.path;
-      if (playNow && url) status.playState = true;
-      if (url) {
-        // 创建播放器
-        createPlayer(url);
+      songUrl = playList[playIndex]?.path;
+      if (playNow && songUrl) status.playState = true;
+    }
+
+    // 创建播放器并并行加载歌词和封面主色
+    if (songUrl) {
+      status.playUseOtherSource = status.playUseOtherSource || false;
+      createPlayer(songUrl);
+
+      // 并行获取封面、歌词和主色，不阻塞播放
+      cover = await coverPromise;
+      if (isLocalSong && isElectron) {
+        music.playSongData.localCover = cover;
+        cover = music.playSongData?.localCover;
+      } else if (isLocalSong) {
+        // 浏览器环境下使用歌单自带封面（字符串 URL）
+        cover = playSongData?.coverSize?.s || playSongData?.cover;
       } else {
-        changePlayIndex("next", playNow);
+        cover = playSongData?.coverSize;
+      }
+
+      Promise.all([
+        playMode !== "dj"
+          ? getSongLyricData(isLocalSong, playSongData, remoteMusicData)
+          : Promise.resolve(),
+        getColorMainColor(isLocalSong, cover),
+      ]);
+
+      // 初始化媒体会话控制
+      initMediaSession(playSongData, cover, isLocalSong, playMode === "dj");
+    } else {
+      // 无播放地址处理
+      isPlayEnd = true;
+      status.playUseOtherSource = false;
+      if (playIndex === playList.length - 1) {
+        status.playState = false;
+        status.playLoading = false;
+        $message.warning("当前列表歌曲无法播放，请更换歌曲");
+      } else {
+        $message.error("该歌曲暂无音源，跳至下一首");
+        changePlayIndex("next", true);
       }
     }
-    // 获取歌词
-    if (playMode !== "dj") getSongLyricData(isLocalSong, playSongData);
-    // 初始化媒体会话控制
-    initMediaSession(playSongData, cover, isLocalSong, playMode === "dj");
-    // 获取图片主色
-    getColorMainColor(isLocalSong, cover);
   } catch (error) {
     testNumber++;
     // 错误次数过多
@@ -234,9 +263,11 @@ export const createPlayer = async (src, autoPlay = true) => {
       volume: status.playVolume,
       rate: status.playRate,
     });
-    // 允许跨域
-    const audioDom = player._sounds[0]._node;
-    audioDom.crossOrigin = "anonymous";
+    // 允许跨域（仅在 Electron 环境下，浏览器环境可能导致 CORS 加载失败）
+    if (checkPlatform.electron()) {
+      const audioDom = player._sounds[0]._node;
+      audioDom.crossOrigin = "anonymous";
+    }
     // 写入播放历史
     if (playMode !== "dj") music.setPlayHistory(playSongData);
     // 生成音乐频谱
@@ -592,7 +623,7 @@ const justSetSeek = () => {
  * 获取歌曲的歌词数据并解析
  * @param {object} data - 歌曲的数据
  */
-const getSongLyricData = async (islocal, data) => {
+const getSongLyricData = async (islocal, data, remoteMusicData = null) => {
   if (!data?.id) return false;
   try {
     const music = musicData();
@@ -608,7 +639,29 @@ const getSongLyricData = async (islocal, data) => {
       };
     };
     if (islocal) {
-      const lyricData = await electron.ipcRenderer.invoke("getMusicLyric", data?.path);
+      let lyricData = null;
+      const isElectron = checkPlatform.electron();
+      const isRemoteUrl =
+        data?.path && (data.path.startsWith("http://") || data.path.startsWith("https://"));
+
+      // 判断是否为远程URL
+      if (isRemoteUrl) {
+        // 使用预解析的数据（如果有）
+        if (remoteMusicData && remoteMusicData.lyric) {
+          lyricData = remoteMusicData.lyric;
+        } else if (isElectron) {
+          // Electron 环境下远程音乐文件，使用 parseRemoteMusic 解析
+          const musicData = await electron.ipcRenderer.invoke("parseRemoteMusic", data.path);
+          if (musicData && musicData.lyric) {
+            lyricData = musicData.lyric;
+          }
+        }
+        // 浏览器环境下无法解析远程音乐内嵌歌词，lyricData 保持 null
+      } else if (isElectron) {
+        // 本地音乐文件，使用原有逻辑
+        lyricData = await electron.ipcRenderer.invoke("getMusicLyric", data?.path);
+      }
+
       if (lyricData) {
         const result = parseLocalLrc(lyricData);
         music.playSongLyric = result ? (music.playSongLyric = result) : setDefaults();

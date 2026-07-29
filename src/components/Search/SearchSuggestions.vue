@@ -169,7 +169,7 @@ watch(
   left: 0;
   top: 42px;
   width: 300px;
-  max-height: calc(100vh - 160px);
+  max-height: calc(var(--vh, 1vh) * 100 - 160px);
   border-radius: 8px;
   overflow: hidden;
   z-index: 11;
@@ -178,7 +178,7 @@ watch(
     opacity 0.3s ease,
     transform 0.3s ease;
   :deep(.scrollbar) {
-    max-height: calc(100vh - 160px);
+    max-height: calc(var(--vh, 1vh) * 100 - 160px);
     .n-scrollbar-content {
       padding: 10px;
     }
@@ -241,11 +241,11 @@ watch(
     top: 58px;
     border-radius: 0px;
     width: 100%;
-    max-height: calc(100vh - 58px);
-    min-height: calc(100vh - 58px);
+    max-height: calc(var(--vh, 1vh) * 100 - 58px);
+    min-height: calc(var(--vh, 1vh) * 100 - 58px);
     :deep(.scrollbar) {
-      max-height: calc(100vh - 58px);
-      min-height: calc(100vh - 58px);
+      max-height: calc(var(--vh, 1vh) * 100 - 58px);
+      min-height: calc(var(--vh, 1vh) * 100 - 58px);
     }
   }
 }

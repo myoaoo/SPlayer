@@ -3,7 +3,7 @@
   <n-drawer
     v-model:show="drawerShow"
     :auto-focus="false"
-    height="calc(100vh - 200px)"
+    height="calc(var(--vh, 1vh) * 100 - 200px)"
     placement="bottom"
     class="song-list-drawer"
     @after-leave="drawerShow = false"

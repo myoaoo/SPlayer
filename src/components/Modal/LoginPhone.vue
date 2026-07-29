@@ -18,26 +18,27 @@
         </n-input>
       </n-form-item>
       <n-form-item path="captcha">
-        <n-input-number
-          v-model:value="phoneFormData.captcha"
-          :show-button="false"
-          style="width: 100%"
-          placeholder="请输入短信验证码"
-        >
-          <template #prefix>
-            <n-icon>
-              <SvgIcon icon="password" />
-            </n-icon>
-          </template>
-        </n-input-number>
-        <n-button
-          :disabled="captchaDisabled"
-          type="primary"
-          style="margin-left: 12px"
-          @click="getCaptcha(phoneFormData.phone)"
-        >
-          {{ captchaText }}
-        </n-button>
+        <div class="captcha-input-wrapper">
+          <n-input
+            v-model:value="phoneFormData.captcha"
+            style="width: 100%"
+            placeholder="请输入短信验证码"
+          >
+            <template #prefix>
+              <n-icon>
+                <SvgIcon icon="password" />
+              </n-icon>
+            </template>
+          </n-input>
+          <n-button
+            :disabled="captchaDisabled"
+            type="primary"
+            style="margin-left: 12px"
+            @click="getCaptcha(phoneFormData.phone)"
+          >
+            {{ captchaText }}
+          </n-button>
+        </div>
       </n-form-item>
       <n-form-item>
         <n-button style="width: 100%" type="primary" @click="phoneLogin"> 登录 </n-button>
@@ -57,11 +58,22 @@ const { numberRule, mobileRule } = formRules();
 const phoneFormRef = ref(null);
 const phoneFormData = ref({
   phone: null,
-  captcha: null,
+  captcha: "",
 });
 const phoneFormRules = {
   phone: mobileRule,
-  captcha: numberRule,
+  captcha: [
+    {
+      required: true,
+      message: "请输入验证码",
+      trigger: "blur",
+    },
+    {
+      pattern: /^\d{4,6}$/,
+      message: "验证码为4-6位数字",
+      trigger: "blur",
+    },
+  ],
 };
 const captchaTimeOut = ref(null);
 const captchaText = ref("获取验证码");
@@ -74,26 +86,33 @@ const getCaptcha = (phone) => {
     async (errors) => {
       if (!errors) {
         console.log(phone + "发送验证码");
-        const result = await sentCaptcha(phone);
-        console.log(result);
-        if (result.code === 200) {
-          $message.success("验证码发送成功");
-          let countDown = 60;
-          captchaDisabled.value = true;
-          captchaTimeOut.value = setInterval(() => {
-            countDown--;
+        try {
+          const result = await sentCaptcha(phone);
+          console.log("验证码发送结果:", result);
+          if (result.code === 200) {
+            $message.success("验证码发送成功");
+            let countDown = 60;
+            captchaDisabled.value = true;
             captchaText.value = countDown + "s";
-            if (countDown === 0) {
-              clearInterval(captchaTimeOut.value);
-              captchaText.value = "重新获取";
-              captchaDisabled.value = false;
-            }
-          }, 1000);
-        } else {
-          $message.error("验证码发送失败，请重试");
+            captchaTimeOut.value = setInterval(() => {
+              countDown--;
+              captchaText.value = countDown + "s";
+              if (countDown === 0) {
+                clearInterval(captchaTimeOut.value);
+                captchaText.value = "重新获取";
+                captchaDisabled.value = false;
+              }
+            }, 1000);
+          } else {
+            $message.error(result.msg || result.message || "验证码发送失败，请重试");
+          }
+        } catch (error) {
+          console.error("验证码发送出错：", error);
+          const errorMsg = error?.response?.data?.message || error?.message || "网络错误，请重试";
+          $message.error(`验证码发送失败：${errorMsg}`);
         }
       } else {
-        $message.error("请检查你的输入");
+        $message.error("请检查你的手机号输入");
       }
     },
     (rule) => {
@@ -110,28 +129,39 @@ const phoneLogin = (e) => {
       try {
         const verifyRes = await verifyCaptcha(
           phoneFormData.value.phone,
-          phoneFormData.value.captcha,
+          String(phoneFormData.value.captcha),
         );
-        console.log(verifyRes);
+        console.log("验证码验证结果:", verifyRes);
         if (verifyRes.code === 200) {
-          const result = await toLogin(phoneFormData.value.phone, phoneFormData.value.captcha);
-          console.log(result);
+          const result = await toLogin(
+            phoneFormData.value.phone,
+            String(phoneFormData.value.captcha),
+          );
+          console.log("登录结果:", result);
           if (result.code === 200) {
             // 去除 HTTPOnly
-            result.cookie = result.cookie.replaceAll(" HTTPOnly", "");
+            if (result.cookie) {
+              result.cookie = result.cookie.replaceAll(" HTTPOnly", "");
+            }
             // 是否含有 MUSIC_U
             if (result.cookie && result.cookie.includes("MUSIC_U")) {
               // 储存登录信息
               emit("setLoginData", result);
             } else {
-              $message.error("登录出错，请重试");
+              $message.error("登录返回数据异常，请稍后重试");
             }
+          } else {
+            $message.error(result.msg || result.message || "登录失败，请重试");
           }
+        } else {
+          $message.error(verifyRes.msg || verifyRes.message || "验证码验证失败，请检查验证码是否正确");
         }
       } catch (error) {
-        phoneFormData.value.captcha = null;
+        phoneFormData.value.captcha = "";
         console.error("登录出错：", error);
-        $message.error("登录出错，请重试");
+        // 显示更详细的错误信息
+        const errorMsg = error?.response?.data?.message || error?.message || "网络错误，请重试";
+        $message.error(`登录出错：${errorMsg}`);
       }
     } else {
       $message.error("请检查你的输入");
@@ -144,6 +174,10 @@ const phoneLogin = (e) => {
 .login-phone {
   .phone-form {
     margin-top: 20px;
+  }
+  .captcha-input-wrapper {
+    display: flex;
+    align-items: center;
   }
 }
 </style>

@@ -132,7 +132,7 @@ const mainMenuOptions = computed(() => [
       onClick: () => (mainMenuShow.value = false),
     },
     render: () => {
-      return h(NScrollbar, { style: { maxHeight: "calc(100vh - 200px)", minWidth: "280px" } }, () =>
+      return h(NScrollbar, { style: { maxHeight: "calc(var(--vh, 1vh) * 100 - 200px)", minWidth: "280px" } }, () =>
         h(Menu),
       );
     },

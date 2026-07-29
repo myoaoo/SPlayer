@@ -4,7 +4,7 @@
     <div
       v-if="allAlbumData"
       :style="{
-        height: `calc(100vh - ${
+        height: `calc(var(--vh, 1vh) * 100 - ${
           Object.keys(music.playSongData)?.length && status.showPlayBar ? 445 : 365
         }px)`,
       }"

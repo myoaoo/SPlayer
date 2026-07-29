@@ -334,6 +334,51 @@ const getPlayListDetailData = async (id, justDetail = false) => {
     // 清空数据
     playListDetail.value = null;
     if (!justDetail) playListData.value = null;
+    
+    // 本地歌单处理
+    if (typeof id === "string" && id.startsWith("local-")) {
+      const playlistName = id.replace("local-", "");
+      const response = await fetch("/local-playlist/music6.json");
+      const data = await response.json();
+      
+      if (data[playlistName]) {
+        playListDetail.value = {
+          id: id,
+          name: playlistName,
+          cover: data[playlistName].cover,
+          coverSize: {
+            s: data[playlistName].cover,
+            m: data[playlistName].cover,
+            l: data[playlistName].cover,
+            xl: data[playlistName].cover,
+          },
+          count: data[playlistName].songs.length,
+          playCount: 0,
+        };
+        if (!justDetail) {
+          playListData.value = data[playlistName].songs.map((songUrl, index) => ({
+            id: `local-song-${playlistName}-${index}`,
+            name: songUrl.split("/").pop().replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+            path: songUrl,
+            isLocal: true,
+            cover: data[playlistName].cover,
+            coverSize: {
+              s: data[playlistName].cover,
+              m: data[playlistName].cover,
+              l: data[playlistName].cover,
+              xl: data[playlistName].cover,
+            },
+            artists: [{ name: "本地音乐" }],
+            album: { name: playlistName },
+          }));
+        }
+        return true;
+      } else {
+        playListData.value = "empty";
+        return false;
+      }
+    }
+    
     // 获取数据
     const detail = await getPlayListDetail(id);
     // 基础信息

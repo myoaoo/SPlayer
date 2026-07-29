@@ -27,6 +27,30 @@
       </n-grid>
       <PrivateFm class="rec-fm" />
     </div>
+    <!-- 自定义网易云歌单 -->
+    <div v-if="customPlaylistData.data.length" class="rec-public">
+      <n-h3 class="title" prefix="bar">
+        <n-text class="name">{{ customPlaylistData.name }}</n-text>
+      </n-h3>
+      <MainCover
+        :data="customPlaylistData.data"
+        :loadingNum="customPlaylistData.loadingNum"
+        :columns="customPlaylistData.columns"
+      />
+    </div>
+
+    <!-- 本地歌单 -->
+    <div v-if="localPlaylistData.data.length" class="rec-public">
+      <n-h3 class="title" prefix="bar">
+        <n-text class="name">{{ localPlaylistData.name }}</n-text>
+      </n-h3>
+      <MainCover
+        :data="localPlaylistData.data"
+        :loadingNum="localPlaylistData.loadingNum"
+        :columns="localPlaylistData.columns"
+      />
+    </div>
+
     <!-- 公共推荐 -->
     <div v-for="(item, index) in recommendData" :key="index" class="rec-public">
       <n-h3 class="title" prefix="bar" @click="item.to ? router.push(item.to) : null">
@@ -56,6 +80,7 @@ import {
   getTopArtists,
   getNewAlbum,
 } from "@/api/recommend";
+import { getPlayListDetail } from "@/api/playlist";
 import { allMv } from "@/api/video";
 import { getDjRecommend } from "@/api/dj";
 import { siteData, siteSettings } from "@/stores";
@@ -98,6 +123,23 @@ const likeSongsCoverData = computed(() => {
   }
   likeSongsCover.cover = "/imgs/pic/like.jpg";
   return likeSongsCover;
+});
+
+// 自定义网易云歌单列表
+const customPlaylistIds = [5471077812, 12654888896, 12584586769, 12510385889, 8855877957, 8725429117, 8725850622, 8185045795, 8184817453, 8173191976, 8173838382, 5471042889];
+const customPlaylistData = ref({
+  name: "我的歌单",
+  loadingNum: customPlaylistIds.length,
+  columns: showSider.value ? undefined : "2 s:3 m:4 l:5 xl:6",
+  data: [],
+});
+
+// 本地歌单数据
+const localPlaylistData = ref({
+  name: "本地歌单",
+  loadingNum: 4,
+  columns: showSider.value ? undefined : "2 s:3 m:4 l:5 xl:6",
+  data: [],
 });
 
 // 个性化推荐数据
@@ -146,6 +188,62 @@ const recommendData = ref({
     to: "/discover/new",
   },
 });
+
+// 获取自定义网易云歌单
+const getCustomPlaylists = async () => {
+  try {
+    const customRes = await Promise.allSettled(
+      customPlaylistIds.map((id) => getPlayListDetail(id)),
+    );
+    customPlaylistData.value.data = customRes
+      .filter((res) => res.status === "fulfilled" && res.value.playlist)
+      .map((res) => {
+        const formatted = formatData(res.value.playlist);
+        return formatted && formatted.length > 0 ? formatted[0] : null;
+      })
+      .filter((item) => item !== null);
+  } catch (error) {
+    console.error("获取自定义歌单失败：", error);
+  }
+};
+
+// 获取本地歌单
+const getLocalPlaylists = async () => {
+  try {
+    const response = await fetch("/local-playlist/music6.json");
+    const data = await response.json();
+    const playlists = Object.keys(data).map((name) => ({
+      id: `local-${name}`,
+      name: name,
+      cover: data[name].cover,
+      coverSize: {
+        s: data[name].cover,
+        m: data[name].cover,
+        l: data[name].cover,
+        xl: data[name].cover,
+      },
+      count: data[name].songs.length,
+      tracks: data[name].songs.map((songUrl, index) => ({
+        id: `local-song-${name}-${index}`,
+        name: songUrl.split("/").pop().replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+        path: songUrl,
+        isLocal: true,
+        cover: data[name].cover,
+        coverSize: {
+          s: data[name].cover,
+          m: data[name].cover,
+          l: data[name].cover,
+          xl: data[name].cover,
+        },
+        artists: [{ name: "本地音乐" }],
+        album: { name: name },
+      })),
+    }));
+    localPlaylistData.value.data = playlists;
+  } catch (error) {
+    console.error("获取本地歌单失败：", error);
+  }
+};
 
 // 获取个性化推荐数据
 const getRecommendData = async () => {
@@ -221,6 +319,10 @@ const jumpPage = (key, id) => {
 onBeforeMount(() => {
   // 每日推荐
   data.setDailySongsData();
+  // 获取自定义歌单
+  getCustomPlaylists();
+  // 获取本地歌单
+  getLocalPlaylists();
   // 个性化推荐
   getRecommendData();
 });

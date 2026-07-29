@@ -18,7 +18,7 @@ const useSiteSettingsStore = defineStore("siteSettings", {
       justLyricArea: false, // 仅在歌词区域生效
       hiddenVipTags: false, // 隐藏 VIP 标签
       // 主题部分
-      themeType: "dark",
+      themeType: "light",
       themeAuto: false,
       themeTypeName: "red",
       themeTypeData: {},

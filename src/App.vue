@@ -82,7 +82,7 @@ import { storeToRefs } from "pinia";
 import { useRouter } from "vue-router";
 import { darkTheme, NButton } from "naive-ui";
 import { musicData, siteStatus, siteSettings } from "@/stores";
-import { checkPlatform } from "@/utils/helper";
+import { checkPlatform, setViewportHeight } from "@/utils/helper";
 import { initPlayer } from "@/utils/Player";
 import userSignIn from "@/utils/userSignIn";
 import globalShortcut from "@/utils/globalShortcut";
@@ -185,6 +185,10 @@ const handleKeyUp = (event) => {
 onMounted(async () => {
   // 挂载方法
   window.$canNotConnect = canNotConnect;
+  // 设置移动端视口高度
+  if (!checkPlatform.electron()) {
+    setViewportHeight();
+  }
   // 主播放器
   await initPlayer(autoPlay.value);
   // 更改全局字体
@@ -220,9 +224,11 @@ onUnmounted(() => {
     flex-direction: row;
     align-items: center;
     -webkit-app-region: drag;
+    padding-top: env(safe-area-inset-top);
+    min-height: calc(60px + env(safe-area-inset-top));
   }
   .body-layout {
-    top: 60px;
+    top: calc(60px + env(safe-area-inset-top));
     transition: bottom 0.3s;
     .main-sider {
       :deep(.n-scrollbar-content) {

@@ -73,15 +73,65 @@ export const getCacheData = async (key, time, request, params) => {
 };
 
 /**
+ * 设置移动端视口高度变量，解决浏览器地址栏/底部导航遮挡问题
+ */
+export const setViewportHeight = () => {
+  const setVh = () => {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty("--vh", `${vh}px`);
+  };
+  
+  setVh();
+  window.addEventListener("resize", setVh);
+  window.addEventListener("orientationchange", setVh);
+  
+  return () => {
+    window.removeEventListener("resize", setVh);
+    window.removeEventListener("orientationchange", setVh);
+  };
+};
+
+/**
  * 获取本地音乐封面的 Blob URL
- * @param {string} path - 音乐文件的路径
+ * @param {string} path - 音乐文件的路径或URL
+ * @param {Object} remoteMusicData - 预解析的远程音乐数据（可选）
+ * @param {boolean} isAlbum - 是否为专辑封面
  * @returns {Promise<string>} 返回封面的 Blob URL，如果没有封面数据则返回默认 URL
  */
-export const getLocalCoverData = async (path, isAlbum = false) => {
+export const getLocalCoverData = async (path, remoteMusicData = null, isAlbum = false) => {
   try {
+    // 浏览器环境下无法解析嵌入封面，返回默认封面
+    if (!checkPlatform.electron()) {
+      return `/imgs/pic/${isAlbum ? "album" : "song"}.jpg?assest`;
+    }
     // 清理过期的 Blob 链接
     if (lastCoverBlobUrl) URL.revokeObjectURL(lastCoverBlobUrl);
-    const coverData = await electron.ipcRenderer.invoke("getMusicCover", path);
+    
+    let coverData = null;
+    
+    // 判断是否为远程URL
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      // 使用预解析的数据（如果有）
+      if (remoteMusicData && remoteMusicData.cover) {
+        coverData = {
+          coverData: remoteMusicData.cover,
+          coverFormat: remoteMusicData.coverFormat,
+        };
+      } else {
+        // 远程音乐文件，使用 parseRemoteMusic 解析
+        const musicData = await electron.ipcRenderer.invoke("parseRemoteMusic", path);
+        if (musicData && musicData.cover) {
+          coverData = {
+            coverData: musicData.cover,
+            coverFormat: musicData.coverFormat,
+          };
+        }
+      }
+    } else {
+      // 本地音乐文件，使用原有逻辑
+      coverData = await electron.ipcRenderer.invoke("getMusicCover", path);
+    }
+    
     if (coverData) {
       // 将 Uint8Array 数据转换为 Blob
       const blob = new Blob([coverData.coverData], { type: `image/${coverData.coverFormat}` });

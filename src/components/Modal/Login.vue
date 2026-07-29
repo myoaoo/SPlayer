@@ -84,14 +84,19 @@ const setLoginData = async (loginData) => {
     loginModalShow.value = false;
     // 保存 cookie
     setCookies(loginData.cookie);
-    // 获取用户信息
-    await data.setUserProfile();
-    await data.setDailySongsData();
-    // 签到
-    if (autoSignIn.value) await userSignIn();
-    // 更改状态
-    data.userLoginStatus = true;
-    $message.success("登录成功");
+    try {
+      // 获取用户信息
+      await data.setUserProfile();
+      await data.setDailySongsData();
+      // 签到
+      if (autoSignIn.value) await userSignIn();
+      // 更改状态
+      data.userLoginStatus = true;
+      $message.success("登录成功");
+    } catch (error) {
+      console.error("获取用户信息失败：", error);
+      $message.warning("登录成功，但获取用户信息失败，请刷新页面");
+    }
   } else {
     $message.error(loginData.msg ?? loginData.message ?? "账号或密码错误，请重试");
   }

@@ -46,7 +46,7 @@ const { playIndex, playMode, playHeartbeatMode, playState } = storeToRefs(status
 const props = defineProps({
   // id
   id: {
-    type: Number,
+    type: [Number, String],
     required: true,
   },
   // 歌单类型
@@ -71,6 +71,34 @@ const isHasSongs = computed(() => {
 const getPlaylistData = async () => {
   // 为了播放速度，仅加载列表前 500 首
   console.log(props.type, props.id);
+  // 本地歌单处理
+    if (typeof props.id === "string" && props.id.startsWith("local-")) {
+      const playlistName = props.id.replace("local-", "");
+      try {
+        const response = await fetch("/local-playlist/music6.json");
+        const data = await response.json();
+      if (data[playlistName]) {
+        return data[playlistName].songs.map((songUrl, index) => ({
+          id: `local-song-${playlistName}-${index}`,
+          name: songUrl.split("/").pop().replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+          path: songUrl,
+          isLocal: true,
+          cover: data[playlistName].cover,
+          coverSize: {
+            s: data[playlistName].cover,
+            m: data[playlistName].cover,
+            l: data[playlistName].cover,
+            xl: data[playlistName].cover,
+          },
+          artists: [{ name: "本地音乐" }],
+          album: { name: playlistName },
+        }));
+      }
+    } catch (error) {
+      console.error("获取本地歌单失败：", error);
+    }
+    return null;
+  }
   // 按列表类别获取数据
   switch (props.type) {
     case "playlist": {

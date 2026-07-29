@@ -25,16 +25,30 @@ axios.interceptors.request.use(
     if (request.noCookie) {
       request.params.noCookie = true;
     }
-    // 附加 realIP
-    if (!checkPlatform.electron()) request.params.realIP = "116.25.146.177";
-    // 附加代理
-    const proxy = JSON.parse(localStorage.getItem("siteSettings")).proxyProtocol;
-    if (proxy !== "off") {
-      const server = JSON.parse(localStorage.getItem("siteSettings")).proxyServe;
-      const port = parseInt(localStorage.getItem("siteSettings").proxyPort);
-      if (server && port) {
-        request.params.proxy = `${proxy}://${server}:${port}`;
+    // 附加 realIP（登录/验证码相关请求不添加realIP，避免被网易云反爬检测拦截）
+    const isAuthUrl =
+      request.url &&
+      (request.url.includes("/login/") ||
+        request.url.includes("/captcha/") ||
+        request.url.includes("/login/cellphone"));
+    if (!checkPlatform.electron() && !isAuthUrl) {
+      request.params.realIP = "116.25.146.177";
+    }
+    // 附加代理（安全解析配置）
+    try {
+      const settingsStr = localStorage.getItem("siteSettings");
+      if (settingsStr) {
+        const proxy = JSON.parse(settingsStr);
+        if (proxy && proxy.proxyProtocol && proxy.proxyProtocol !== "off") {
+          const server = proxy.proxyServe;
+          const port = proxy.proxyPort;
+          if (server && port) {
+            request.params.proxy = `${proxy.proxyProtocol}://${server}:${port}`;
+          }
+        }
       }
+    } catch (e) {
+      // 忽略配置解析错误
     }
     // 发送请求
     return request;

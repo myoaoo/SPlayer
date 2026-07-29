@@ -2,12 +2,15 @@ import { ipcMain, dialog, app, clipboard, shell } from "electron";
 import { File, Picture, Id3v2Settings } from "node-taglib-sharp";
 import { configureAutoUpdater } from "@main/utils/checkUpdates";
 import { readDirAsync } from "@main/utils/readDirAsync";
-import { parseFile } from "music-metadata";
+import { parseFile, parseBuffer } from "music-metadata";
 import { download } from "electron-dl";
 import { getFonts } from "font-list";
 import getNeteaseMusicUrl from "@main/utils/getNeteaseMusicUrl";
 import axios from "axios";
 import fs from "fs/promises";
+
+// 远程音乐解析缓存
+const remoteMusicCache = new Map();
 
 /**
  * 监听主进程的 IPC 事件
@@ -153,6 +156,55 @@ const mainIpcMain = (win, store) => {
     } catch (error) {
       console.error("读取音乐封面出错：", error);
       return null;
+    }
+  });
+
+  // 远程音乐解析缓存
+  // 解析远程音乐文件（封面和歌词）
+  ipcMain.handle("parseRemoteMusic", async (_, url) => {
+    try {
+      // 检查缓存
+      if (remoteMusicCache.has(url)) {
+        console.log("远程音乐解析命中缓存：", url);
+        return remoteMusicCache.get(url);
+      }
+
+      console.log("开始解析远程音乐文件：", url);
+      const response = await axios.get(url, { responseType: "arraybuffer" });
+      const buffer = Buffer.from(response.data);
+      const data = await parseBuffer(buffer);
+
+      const result = {
+        lyric: null,
+        cover: null,
+        coverFormat: null,
+      };
+
+      // 解析歌词
+      const lyric = data.common.lyrics;
+      if (lyric && lyric.length > 0) {
+        result.lyric = lyric[0];
+      }
+
+      // 解析封面
+      const picture = data.common.picture;
+      if (picture && picture.length > 0) {
+        result.cover = picture[0].data;
+        result.coverFormat = picture[0].format;
+      }
+
+      console.log("远程音乐解析完成：", { hasLyric: !!result.lyric, hasCover: !!result.cover });
+
+      // 缓存结果（5分钟后过期）
+      remoteMusicCache.set(url, result);
+      setTimeout(() => {
+        remoteMusicCache.delete(url);
+      }, 5 * 60 * 1000);
+
+      return result;
+    } catch (error) {
+      console.error("解析远程音乐文件出错：", error);
+      return { lyric: null, cover: null, coverFormat: null };
     }
   });
 

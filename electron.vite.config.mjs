@@ -128,6 +128,7 @@ export default defineConfig(async ({ mode }) => {
       ],
       // 服务器配置
       server: {
+        host: "0.0.0.0",
         port: devPort,
         // 代理
         proxy: {
@@ -135,6 +136,11 @@ export default defineConfig(async ({ mode }) => {
             target: `http://${getEnv("MAIN_VITE_SERVER_HOST")}:${serverPort}`,
             changeOrigin: true,
             rewrite: (path) => path.replace(/^\/api/, ""),
+          },
+          "/local-playlist": {
+            target: "https://code.oaoo.top",
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/local-playlist/, ""),
           },
         },
       },

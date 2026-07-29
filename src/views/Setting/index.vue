@@ -31,7 +31,7 @@
     <n-scrollbar
       ref="setScrollRef"
       :style="{
-        height: `calc(100vh - ${music.getPlaySongData?.id && showPlayBar ? 328 : 248}px)`,
+        height: `calc(var(--vh, 1vh) * 100 - ${music.getPlaySongData?.id && showPlayBar ? 328 : 248}px)`,
       }"
       class="all-set"
       @scroll="allSetScroll"
