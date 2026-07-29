@@ -248,7 +248,7 @@ import {
   likePlaylist,
 } from "@/api/playlist";
 import { getSongDetail } from "@/api/song";
-import { formatNumber, fuzzySearch } from "@/utils/helper";
+import { formatNumber, fuzzySearch, checkPlatform } from "@/utils/helper";
 import { isLogin } from "@/utils/auth";
 import { getTimestampTime } from "@/utils/timeTools";
 import { playAllSongs } from "@/utils/Player";
@@ -338,7 +338,13 @@ const getPlayListDetailData = async (id, justDetail = false) => {
     // 本地歌单处理
     if (typeof id === "string" && id.startsWith("local-")) {
       const playlistName = id.replace("local-", "");
-      const response = await fetch("/local-playlist/music6.json");
+      // 生产环境使用完整URL，开发环境使用代理
+      const playlistUrl = checkPlatform.electron() && import.meta.env.DEV
+        ? "/local-playlist/music6.json"
+        : "https://code.oaoo.top/music6.json";
+      
+      const response = await fetch(playlistUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       
       if (data[playlistName]) {

@@ -84,7 +84,7 @@ import { getPlayListDetail } from "@/api/playlist";
 import { allMv } from "@/api/video";
 import { getDjRecommend } from "@/api/dj";
 import { siteData, siteSettings } from "@/stores";
-import { getCacheData } from "@/utils/helper";
+import { getCacheData, checkPlatform } from "@/utils/helper";
 import { isLogin } from "@/utils/auth";
 import formatData from "@/utils/formatData";
 
@@ -192,16 +192,35 @@ const recommendData = ref({
 // 获取自定义网易云歌单
 const getCustomPlaylists = async () => {
   try {
+    // 添加加载缓存，避免重复请求
+    const cacheKey = `custom_playlists_cache_${customPlaylistIds.join("_")}`;
+    const cacheTime = 10 * 60 * 1000; // 10分钟缓存
+    const cached = localStorage.getItem(cacheKey);
+    const now = Date.now();
+    
+    if (cached) {
+      const { data: cachedData, timestamp } = JSON.parse(cached);
+      if (now - timestamp < cacheTime) {
+        customPlaylistData.value.data = cachedData;
+        return;
+      }
+    }
+    
     const customRes = await Promise.allSettled(
       customPlaylistIds.map((id) => getPlayListDetail(id)),
     );
-    customPlaylistData.value.data = customRes
+    const result = customRes
       .filter((res) => res.status === "fulfilled" && res.value.playlist)
       .map((res) => {
         const formatted = formatData(res.value.playlist);
         return formatted && formatted.length > 0 ? formatted[0] : null;
       })
       .filter((item) => item !== null);
+    
+    customPlaylistData.value.data = result;
+    
+    // 缓存新数据
+    localStorage.setItem(cacheKey, JSON.stringify({ data: result, timestamp: now }));
   } catch (error) {
     console.error("获取自定义歌单失败：", error);
   }
@@ -210,11 +229,63 @@ const getCustomPlaylists = async () => {
 // 获取本地歌单
 const getLocalPlaylists = async () => {
   try {
-    const response = await fetch("/local-playlist/music6.json");
+    const cacheKey = "local_playlist_cache";
+    const cacheTime = 30 * 60 * 1000; // 30分钟缓存
+    const now = Date.now();
+    
+    // 先从缓存加载，保证快速显示
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      const { data: cachedData, timestamp } = JSON.parse(cached);
+      // 即使过期也先用缓存显示，然后后台更新
+      if (cachedData && Object.keys(cachedData).length > 0) {
+        const playlists = formatLocalPlaylists(cachedData);
+        localPlaylistData.value.data = playlists;
+      }
+      
+      // 如果缓存还有效，直接返回
+      if (now - timestamp < cacheTime) {
+        return;
+      }
+    }
+    
+    // 生产环境使用完整URL，开发环境使用代理
+    const playlistUrl = checkPlatform.electron() && import.meta.env.DEV
+      ? "/local-playlist/music6.json"
+      : "https://code.oaoo.top/music6.json";
+    
+    const response = await fetch(playlistUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
-    const playlists = Object.keys(data).map((name) => ({
-      id: `local-${name}`,
-      name: name,
+    
+    // 缓存新数据
+    localStorage.setItem(cacheKey, JSON.stringify({ data, timestamp: now }));
+    
+    const playlists = formatLocalPlaylists(data);
+    localPlaylistData.value.data = playlists;
+  } catch (error) {
+    console.error("获取本地歌单失败：", error);
+  }
+};
+
+// 格式化本地歌单数据
+const formatLocalPlaylists = (data) => {
+  return Object.keys(data).map((name) => ({
+    id: `local-${name}`,
+    name: name,
+    cover: data[name].cover,
+    coverSize: {
+      s: data[name].cover,
+      m: data[name].cover,
+      l: data[name].cover,
+      xl: data[name].cover,
+    },
+    count: data[name].songs.length,
+    tracks: data[name].songs.map((songUrl, index) => ({
+      id: `local-song-${name}-${index}`,
+      name: songUrl.split("/").pop().replace(/\.[^/.]+$/, "").replace(/_/g, " "),
+      path: songUrl,
+      isLocal: true,
       cover: data[name].cover,
       coverSize: {
         s: data[name].cover,
@@ -222,27 +293,10 @@ const getLocalPlaylists = async () => {
         l: data[name].cover,
         xl: data[name].cover,
       },
-      count: data[name].songs.length,
-      tracks: data[name].songs.map((songUrl, index) => ({
-        id: `local-song-${name}-${index}`,
-        name: songUrl.split("/").pop().replace(/\.[^/.]+$/, "").replace(/_/g, " "),
-        path: songUrl,
-        isLocal: true,
-        cover: data[name].cover,
-        coverSize: {
-          s: data[name].cover,
-          m: data[name].cover,
-          l: data[name].cover,
-          xl: data[name].cover,
-        },
-        artists: [{ name: "本地音乐" }],
-        album: { name: name },
-      })),
-    }));
-    localPlaylistData.value.data = playlists;
-  } catch (error) {
-    console.error("获取本地歌单失败：", error);
-  }
+      artists: [{ name: "本地音乐" }],
+      album: { name: name },
+    })),
+  }));
 };
 
 // 获取个性化推荐数据

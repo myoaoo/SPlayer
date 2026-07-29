@@ -33,6 +33,7 @@ import { getDjProgram } from "@/api/dj";
 import { musicData, siteStatus, siteData } from "@/stores";
 import { playOrPause, initPlayer } from "@/utils/Player";
 import { isLogin } from "@/utils/auth";
+import { checkPlatform } from "@/utils/helper";
 import formatData from "@/utils/formatData";
 
 const router = useRouter();
@@ -72,11 +73,18 @@ const getPlaylistData = async () => {
   // 为了播放速度，仅加载列表前 500 首
   console.log(props.type, props.id);
   // 本地歌单处理
-    if (typeof props.id === "string" && props.id.startsWith("local-")) {
-      const playlistName = props.id.replace("local-", "");
-      try {
-        const response = await fetch("/local-playlist/music6.json");
-        const data = await response.json();
+  if (typeof props.id === "string" && props.id.startsWith("local-")) {
+    const playlistName = props.id.replace("local-", "");
+    try {
+      // 生产环境使用完整URL，开发环境使用代理
+      const playlistUrl = checkPlatform.electron() && import.meta.env.DEV
+        ? "/local-playlist/music6.json"
+        : "https://code.oaoo.top/music6.json";
+      
+      const response = await fetch(playlistUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      
       if (data[playlistName]) {
         return data[playlistName].songs.map((songUrl, index) => ({
           id: `local-song-${playlistName}-${index}`,
